@@ -1,0 +1,360 @@
+# models that are checked and are deterministic
+# ibm-research/granite-4.0-h-3b-ar
+# inception42/Jais-2-8B-Chat
+# inception42/Jais-2-70B-Chat
+# hammh0a/Hala-1.2B
+# hammh0a/Hala-9B
+
+configurations:
+  deterministic:
+    defaults:
+      temperature: 0
+
+  optimized:
+    models:
+      ###################### Gemma 4 ######################
+      google/gemma-4-*B-it*:
+        defaults:
+          temperature: 1.0
+          top_p: 0.95
+          top_k: 64
+
+      ###################### Qwen 3.5 & 3.6 & 3.8 ######################
+      Qwen/Qwen3.5-2B:
+        defaults:
+          temperature: 1.0
+          top_p: 0.95
+          top_k: 20
+          min_p: 0.0
+          presence_penalty: 1.5
+          repetition_penalty: 1.0
+        rules:
+          - when:
+              domain: coding
+              mode: think
+            set:
+              temperature: 0.6
+              presence_penalty: 0.0
+          - when:
+              mode: instruct
+            set:
+              temperature: 1.0
+              top_p: 1.0
+              top_k: 20
+              presence_penalty: 2.0
+
+      Qwen/Qwen3.5-4B:
+        defaults:
+          temperature: 1.0
+          top_p: 0.95
+          top_k: 20
+          min_p: 0.0
+          presence_penalty: 1.5
+          repetition_penalty: 1.0
+        rules:
+          - when:
+              domain: coding
+              mode: think
+            set:
+              temperature: 0.6
+              presence_penalty: 0.0
+          - when:
+              mode: instruct
+            set:
+              temperature: 0.7
+              top_p: 0.80
+
+      Qwen/Qwen3.5-9B:
+        defaults:
+          temperature: 1.0
+          top_p: 0.95
+          top_k: 20
+          min_p: 0.0
+          presence_penalty: 1.5
+          repetition_penalty: 1.0
+        rules:
+          - when:
+              domain: coding
+              mode: think
+            set:
+              temperature: 0.6
+              presence_penalty: 0.0
+          - when:
+              domain: coding
+              mode: instruct
+            set: {} #intentionally left empty
+          - when:
+              mode: instruct
+            set:
+              temperature: 0.7
+              top_p: 0.80
+
+      Qwen/Qwen3.5-397B-A17B:
+        defaults:
+          top_k: 20
+          min_p: 0.0
+          repetition_penalty: 1.0
+        rules:
+          - when:
+              mode: think
+            set:
+              temperature: 0.6
+              top_p: 0.95
+              presence_penalty: 0.0
+          - when:
+              mode: instruct
+            set:
+              temperature: 0.7
+              top_p: 0.80
+              presence_penalty: 1.5
+
+      Qwen/Qwen3.6-27B:
+        defaults:
+          temperature: 1.0
+          top_p: 0.95
+          top_k: 20
+          min_p: 0.0
+          presence_penalty: 0.0
+          repetition_penalty: 1.0
+        rules:
+          - when:
+              domain: coding
+              mode: think
+            set:
+              temperature: 0.6
+              presence_penalty: 0.0
+          - when:
+              mode: instruct
+            set:
+              temperature: 0.7
+              top_p: 0.80
+              presence_penalty: 1.5
+
+      Qwen/Qwen3.6-35B-A3B:
+        defaults:
+          temperature: 1.0
+          top_p: 0.95
+          top_k: 20
+          min_p: 0.0
+          presence_penalty: 1.5
+          repetition_penalty: 1.0
+        rules:
+          - when:
+              domain: coding
+              mode: think
+            set:
+              temperature: 0.6
+              presence_penalty: 0.0
+          - when:
+              mode: instruct
+            set:
+              temperature: 0.7
+              top_p: 0.80
+
+      Qwen/Qwen3.8-27B:
+        defaults:
+          top_k: 20
+          min_p: 0.0
+          repetition_penalty: 1.0
+        rules:
+          - when:
+              mode: think
+            set:
+              temperature: 1.0
+              top_p: 0.95
+              presence_penalty: 0.0
+          - when:
+              mode: instruct
+            set:
+              temperature: 0.7
+              top_p: 0.80
+              presence_penalty: 1.5
+
+      Qwen/Qwen3.8-Flash-Next:
+        defaults:
+          top_k: 20
+          min_p: 0.0
+          repetition_penalty: 1.0
+        rules:
+          - when:
+              mode: think
+            set:
+              temperature: 1.0
+              top_p: 0.95
+              presence_penalty: 0.0
+          - when:
+              mode: instruct
+            set:
+              temperature: 0.7
+              top_p: 0.80
+              presence_penalty: 1.5
+
+      ###################### Fanar ######################
+      QCRI/Fanar-*:
+        defaults:
+          temperature: 0.7
+      
+      ###################### Falcon ######################
+      tiiuae/Falcon-H1-*-Instruct:
+        defaults:
+          temperature: 0.1 # Official Falcon-H1 family inference guidance.
+      
+      ###################### Jais 3 SFT checkpoints ######################
+      /jais3/checkpoints/jais3_experiments/sft*:
+        defaults:
+          temperature: 0.2
+          top_p: 0.95
+          top_k: 20
+          min_p: 0.0
+          presence_penalty: 0.0
+          repetition_penalty: 1.0
+        rules:
+          - when:
+              mode: think
+              language: english
+            set:
+              temperature: 1.0
+
+          - when:
+              mode: think
+              language: arabic
+            set:
+              temperature: 0.7
+      
+      /jais3/checkpoints/jais3_experiments/release_checkpoints/1b/cpt*:
+        defaults:
+          temperature: 0.2
+          top_p: 0.95
+          top_k: 20
+          min_p: 0.0
+          presence_penalty: 0.0
+          repetition_penalty: 1.0
+        rules:
+          - when:
+              mode: think
+              language: english
+            set:
+              temperature: 1.0
+
+          - when:
+              mode: think
+              language: arabic
+            set:
+              temperature: 0.7
+
+
+      /jais3/checkpoints/jais3_experiments/release_checkpoints/1b_xml/sft/hf_checkpoints/artifacts/*:
+        defaults:
+          temperature: 0.2
+          top_p: 0.95
+          top_k: 20
+          min_p: 0.0
+          presence_penalty: 0.0
+          repetition_penalty: 1.0
+        rules:
+          - when:
+              mode: think
+              language: english
+            set:
+              temperature: 1.0
+
+          - when:
+              mode: think
+              language: arabic
+            set:
+              temperature: 0.7
+              
+      ###################### BBQ ######################
+      /jais3/checkpoints/bbq*:
+        defaults:
+          temperature: 1.0
+          top_p: 0.95
+
+      ###################### Karnak ######################
+      Applied-Innovation-Center/Karnak-*:
+        defaults:
+          temperature: 0.7
+          top_p: 0.9
+
+      ###################### Muse-Glimmer-30B ######################
+      meta-models/Muse-Glimmer-30B:
+        defaults:
+          temperature: 1.0
+          top_p: 0.95
+          top_k: 64
+      
+      ###################### aya ######################
+      CohereLabs/tiny-aya-global:
+        defaults:
+          temperature: 0.1
+          top_p: 0.95
+
+      ###################### ALLaM ######################
+      humain-ai/ALLaM-7B-Instruct-preview:
+        defaults:
+          temperature: 0.6
+          top_p: 0.95
+          top_k: 50
+
+      ###################### Llama ######################
+      meta-llama/Llama-3.2-1B-Instruct: # from generation_config.json
+        defaults:
+          temperature: 0.6
+          top_p: 0.9
+
+      ###################### Euro ######################
+      utter-project/EuroMoE-2.6B-A0.6B-Instruct-2512: # from generation_config.json (do_sample: true) so we are using the default values used by vLLM.
+        defaults:
+          temperature: 1.0
+          top_p: 1.0
+          top_k: 50
+          repetition_penalty: 1.0
+      
+      ########K2-Horizon Models############################
+      IFM/K2-Horizon-0.9B:
+        defaults:
+          temperature: 0.6
+          top_p: 0.95
+      
+      /jais3/checkpoints/K2-Horizon-0.9B-*:
+          defaults:
+            temperature: 0.6
+            top_p: 0.95
+      
+      IFM/K2-Horizon-3.7B:
+        defaults:
+          temperature: 1.0
+          top_p: 0.95
+      
+      IFM/K2-Horizon-7B:
+        defaults:
+          temperature: 1.0
+          top_p: 0.95
+
+      IFM/K2-Horizon-32B:
+        defaults:
+          temperature: 1.0
+          top_p: 0.95
+      
+      IFM/K2-Horizon-MoVA-36B-A4B:
+        defaults:
+          temperature: 1.0
+          top_p: 0.95
+
+      ###################### NVIDIA Nemotron 3 Ultra ######################
+      nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-BF16:
+        defaults:
+          temperature: 1.0
+          top_p: 0.95
+      
+      ###################### MiniMax-M3 ######################
+      MiniMaxAI/MiniMax-M3:
+        defaults:
+          temperature: 1.0
+          top_p: 0.95
+
+      ################### mistralai/Mistral-Small-4-119B-2603 ###############
+      mistralai/Mistral-Small-4-119B-2603:
+        defaults:
+          temperature: 0.7
+          top_p: 1.0
