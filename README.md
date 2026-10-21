@@ -1,6 +1,41 @@
-# Jais 3 Evaluation Pipeline
+# Generative Evaluation Suite
 
 ![Eval pipeline overview](./assets/pipeline.png)
+
+
+## Installation
+
+To properly setup the environment for our evaluation suite, you need to follow
+these steps:
+
+1. Create a new virtual environment (optional but recommended)
+  ```bash
+  $ python --version
+  # should be >= 3.12 and < 3.15
+  $ python -m venv jais3_venv
+  $ source ./jais3_venv/bin/activate
+  ```
+
+2. Install the Python requirements
+  ```bash
+  $ pip install uv --upgrade
+  $ uv pip install -r requirements.txt
+  ```
+
+3. Login to a HPC server (where `nvidia-smi` is available) and install the CUDA requirements by running `python install_cuda_requirements.py`.
+  ```bash
+  $ python install_cuda_requirements.py --dry-run # prints the package list without installing anything
+
+  $ python install_cuda_requirements.py # installs the packages
+  ```
+
+4. Install the vllm nightly build:
+  ```bash
+  $ uv pip install "vllm==0.28.1rc1.dev601+g719284fe1"
+  ```
+
+
+## Overview
 
 This pipeline has three main stages:
 

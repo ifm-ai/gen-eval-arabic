@@ -9,25 +9,12 @@ from argparse import ArgumentParser
 from lm_eval.tasks import TaskManager
 
 from helpers import *
-from m4_helpers import *
+from configs import *
+# from m4_helpers import *
 from logger import logger
-from configs import (
-    SEED,
-    TEMPERATURE,
-    DTYPE,
-    DEFAULT_MAX_MODEL_LEN,
-    DEFAULT_PROFILE,
-    BATCH_SIZE,
-    GPU_MEM_UTIL,
-    ATTENTION_BACKEND,
-    LM_EVAL_VERBOSITY,
-    THINKING_CLOSING_TAGS,
-    RESULTS_PATH,
-    LOCAL_BENCHMARK_PATH,
-    HF_HUB_CACHE_PATH,
-    SBATCH_WAIT_TIME,
-    SBATCH_LOG_PATH,
-)
+
+
+
 
 def main(args):
     # get lm-evaluation-harness task manager
@@ -47,7 +34,6 @@ def main(args):
     # expand checkpoints
     logger.info("Loading checkpoints for evaluation...")
     checkpoints = get_checkpoints(
-        args.base,
         args.instruct,
         args.think
     )
@@ -70,7 +56,6 @@ def main(args):
         # get output path for this checkpoint's results
         ckpt_results_path = get_ckpt_results_path(
             ckpt_type, ckpt, args.results_path,
-            results_suffix=getattr(args, "results_suffix", ""), #! ANWAR: REDUNDANT FEATURE, REMOVE LATER
         )
         ckpt_results_path.mkdir(parents=True, exist_ok=True)
         logger.info(f"Results will be saved to: `{ckpt_results_path}`")
@@ -90,9 +75,6 @@ def main(args):
             profile_hyperparams=profile_hyperparams,
             args=args,
         )
-        # !ANWAR: this condition should be removed later when we fix the 100B venv.
-        if "100b" in ckpt.lower():
-            export_env_variable_cmd += ' && export CPATH=/scratch/ahmed.frikha/pyinclude'
         
         # ===== evaluate checkpoints sequentially (without sbatch) =====
         if not args.sbatch:
@@ -208,10 +190,6 @@ def main(args):
 if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument(
-        "--base", nargs="*", default=None,
-        help="List of base models to evaluate"
-    )
-    parser.add_argument(
         "--instruct", nargs="*", default=None,
         help="List of instruct models to evaluate"
     )
@@ -238,14 +216,8 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        "--results-path", type=Path, default=RESULTS_PATH,
-        help=(
-            f"Path to store evaluation results (default: {RESULTS_PATH})."
-        )
-    )
-    parser.add_argument( #! ANWAR: REDUNDANT FEATURE, REMOVE LATER
-        "--results-suffix", default="",
-        help="Suffix appended to each model result directory (e.g. __temp_0.7)."
+        "--results-path", type=Path, required=True,
+        help=f"Path to store evaluation results."
     )
     parser.add_argument(
         "--local-benchmark-path", type=Path, default=LOCAL_BENCHMARK_PATH,
@@ -265,10 +237,6 @@ if __name__ == "__main__":
     parser.add_argument(
         "--seed", type=int, default=SEED,
         help="Random seed for evaluation (default: 42)"
-    )
-    parser.add_argument(
-        "--batch-size", type=int, default=BATCH_SIZE,
-        help="Batch size for evaluation (default: 16384)"
     )
     parser.add_argument(
         "--lm-eval-verbosity", type=str, default=LM_EVAL_VERBOSITY,
@@ -306,10 +274,6 @@ if __name__ == "__main__":
         ),
     )
     parser.add_argument(
-        "--merge-gen-args", action="store_true", #! ANWAR: REDUNDANT FEATURE, REMOVE LATER
-        help="Keep profile generation settings except keys explicitly set by --gen-args."
-    )
-    parser.add_argument(
         "--limit", type=int, default=None,
         help="Number of samples to evaluate per task (default: all samples)"
     )
@@ -318,7 +282,7 @@ if __name__ == "__main__":
         help="Default data type for evaluation"
     )
     parser.add_argument(
-        "--attention-backend", type=str, default=ATTENTION_BACKEND,
+        "--attention-backend", type=str,
         help="Default attention backend for evaluation"
     )
     parser.add_argument(
@@ -381,12 +345,9 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
-    if args.results_suffix and not re.fullmatch(r"__[A-Za-z0-9_.-]+", args.results_suffix):
-        #! ANWAR: REDUNDANT FEATURE, REMOVE LATER
-        parser.error("--results-suffix must start with __ and contain only letters, digits, _, ., or -")
     # no mode flag at all -> run all modes (each [] resolves to its defaults)
-    if args.base is None and args.instruct is None and args.think is None:
-        args.base = args.instruct = args.think = []
+    if args.instruct is None and args.think is None:
+        args.instruct = args.think = []
 
     # make sure every path argument is a Path object
     args.results_path = Path(args.results_path)

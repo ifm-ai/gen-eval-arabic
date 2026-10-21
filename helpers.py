@@ -24,32 +24,10 @@ def set_environment_variables():
     logger.info("Setting environment variables...")
     return ' && '.join([
         'umask 002',
-        # so that floresspmmodel is not downloaded again, as downnload url is blocked
-        'export SACREBLEU="/scratch/ad_shared/data"',
-        # to handle the M4 bandwidth issue
+        # to handle the M4 bandwidth issue (#! DELETE BEFORE RELEASE)
         "export HF_HUB_OFFLINE=1",
-        "export VLLM_ATTENTION_BACKEND=TRITON_ATTN",
-        # to help with reproducibility
-        # "export VLLM_BATCH_INVARIANT=1", #NOTE: Removed as of 14/05/2026
         # to allow code evaluation in HuggingFace models
         "export HF_ALLOW_CODE_EVAL=1",
-        # to handle HuggingFace metrics cache issue
-        'export HF_METRICS_CACHE="$HF_HOME/metrics_unique/metrics_$(openssl rand -hex 8)"; mkdir -p "$HF_METRICS_CACHE"',
-        # redirect torch/triton compile caches to local user-specific disk to avoid NFS stale file handle errors
-        #### George: Added to fix PermissionError on /tmp//torchinductor_cache: when $USER is empty (cron/non-login shells) the path collapses to a shared /tmp//torchinductor_cache owned by another user. Use $(id -un) (never empty), redirect both the inductor and triton caches (the autotune cache reads TORCHINDUCTOR_CACHE_DIR via cache_dir()), and pre-create the dirs so they are owned by us.
-        'export _EVAL_TMP="/tmp/${SLURM_JOB_ID:-manual}"',
-        'export TORCHINDUCTOR_CACHE_DIR="$_EVAL_TMP/torchinductor_cache"',
-        'export TRITON_CACHE_DIR="$_EVAL_TMP/triton_cache"',
-        'export FLASHINFER_WORKSPACE_BASE="$_EVAL_TMP/flashinfer"',
-        'export VLLM_RAY_EXTRA_ENV_VARS_TO_COPY="${VLLM_RAY_EXTRA_ENV_VARS_TO_COPY:+${VLLM_RAY_EXTRA_ENV_VARS_TO_COPY},}FLASHINFER_WORKSPACE_BASE"',
-        'export NCCL_DEBUG=WARN',
-        # 'export NCCL_NVLS_ENABLE=0',
-        # # flashinfer JIT lock deadlock/ESTALE on NFS (~/.cache/flashinfer)
-        # 'export FLASHINFER_CACHE_DIR="$_EVAL_TMP/flashinfer_cache"',
-        # # default temp dir for everything else (e.g. fallback inductor paths)
-        'export TMPDIR="$_EVAL_TMP"',
-        'mkdir -p "$TORCHINDUCTOR_CACHE_DIR" "$TRITON_CACHE_DIR"',
-        ########
     ])
 
 
@@ -79,18 +57,12 @@ def resolve_checkpoints(checkpoints, default, msg):
     return checkpoints
 
 
-def get_checkpoints(base_checkpoints, instruct_checkpoints, think_checkpoints):
+def get_checkpoints(instruct_checkpoints, think_checkpoints):
     """
     Parses and combines the base, instruct, and think checkpoints into a
     single list of checkpoints to evaluate.
     """
     total_ckpts = []
-    # handle base checkpoints
-    base_checkpoints = resolve_checkpoints(
-        base_checkpoints,
-        DEFAULT_BASE_CHECKPOINTS,
-        "No base checkpoints were provided, loading all default base checkpoints."
-    )
     # handle instruct checkpoints
     instruct_checkpoints = resolve_checkpoints(
         instruct_checkpoints,
@@ -106,7 +78,6 @@ def get_checkpoints(base_checkpoints, instruct_checkpoints, think_checkpoints):
 
     # groups to help organize the parsing and validation of checkpoints
     groups = [
-        ("base", base_checkpoints, DEFAULT_BASE_CHECKPOINTS),
         ("instruct", instruct_checkpoints, DEFAULT_INSTRUCT_CHECKPOINTS),
         ("think", think_checkpoints, DEFAULT_THINK_CHECKPOINTS),
     ]
@@ -139,31 +110,13 @@ def get_checkpoints(base_checkpoints, instruct_checkpoints, think_checkpoints):
     return total_ckpts
 
 
-def get_ckpt_results_path(
-        ckpt_type, ckpt, results_root_path,
-        ckpt_root_path=Path("/jais3/checkpoints"), results_suffix=""
-    ):
-    # local checkpoint
-    if Path(ckpt).exists():
-        ckpt_relative_path = Path(ckpt).relative_to(ckpt_root_path).as_posix()
-        if ckpt_type == "base":
-            suffix = ''
-        elif ckpt_type == "instruct":
-            suffix = "_thinking_low"
-        elif ckpt_type == "think":
-            suffix = "_thinking_high"
-        else:
-            raise ValueError(f"Invalid checkpoint type: {ckpt_type}")
-        # remove "jais3_experiments" when found (#! BUG-Prune?)
-        ckpt_relative_path = ckpt_relative_path.replace('jais3_experiments/', '')
-        ckpt_out_foldername = str(ckpt_relative_path).replace('/', '_') + suffix
-        ckpt_results_path = results_root_path / ckpt_out_foldername
-    # HuggingFace checkpoint
-    else:
-        suffix = "_thinking_high" if ckpt_type == "think" else ''
-        ckpt_out_foldername = ckpt.split("/")[-1] + suffix
-        ckpt_results_path = results_root_path / ckpt_out_foldername
-    return ckpt_results_path.with_name(ckpt_results_path.name + results_suffix)
+def get_ckpt_results_path(ckpt_type, ckpt, results_root_path):
+    if ckpt_type == "instruct":
+        suffix = "_thinking_low" if ckpt in DEFAULT_THINK_CHECKPOINTS else '_instruct'
+    elif ckpt_type == "think":
+        suffix = "_thinking_high"
+    ckpt_out_foldername = ckpt.split("/")[-1] + suffix
+    return results_root_path / ckpt_out_foldername
 
 
 def fix_task_naming(task, all_tasks):
@@ -403,9 +356,6 @@ def get_model_args(ckpt_type, ckpt, model_length, args):
             model_args["enable_thinking"] = True
             model_args["chat_template_args"] = {"reasoning_effort": "high"}
 
-    # #!Testing the 100B checkpoint:
-    # if "100b" in ckpt.lower():
-    #   model_args["enforce_eager"] = True
     if "qwen3.5-397b" in ckpt.lower():
       model_args["max_num_seqs"] = 128
     
@@ -535,7 +485,7 @@ def get_model_hyperparams(
 def get_gen_args(ckpt_model_length, model_hyperparams, args):
     gen_args = []
     # an explicit --temperature overrides the profile's value
-    temperature = args.temperature if args.temperature is not None else model_hyperparams["temperature"]
+    temperature = args.temperature or model_hyperparams["temperature"]
     gen_args.append(f"temperature={temperature}")
     gen_args.append(f"do_sample={temperature != 0}")
 
@@ -647,7 +597,6 @@ def create_eval_cmd(
         "--model_args", per_model_args,
         "--gen_kwargs", per_gen_args,
         "--tasks", ','.join(tasks),
-        "--batch_size", str(kwargs["batch_size"]),
         "--output_path", str(Path(output_path) / "results.json"),
         "--log_samples",
         "--verbosity", kwargs["lm_eval_verbosity"],
@@ -667,66 +616,7 @@ def create_eval_cmd(
 
 def get_venv(task, ckpt):
     """virtual environment might change based on the task and/or checkpoint"""
-    #     logger.debug(f"Using miniHELMET Virtual Environment: `{MINIHELMET_VENV}`")
-    #     return MINIHELMET_VENV
-    # elif TASK_TO_HARNESS.get(task, DEFAULT_HARNESS) == "humanpref":
-        # Native-arch checkpoints (K2-Horizon / Nemotron / MiniMax-M3) only load
-        # in the k2h vLLM-0.28 venv; humanpref runs in-process on one node, so it
-        # runs there too. Everything else uses the default HumanPref venv.
-    #     logger.debug(f"Using HumanPref Virtual Environment: `{HUMANPREF_VENV}`")
-    #     return HUMANPREF_VENV
-
-    # venv_path = "/scratch/ad_shared/.US_venv/.vllm-bbq-0518_py3.12"
-    # ! Anwar: replace following part with one general venv (prior to the release)
-    venv_path = "/scratch/ad_shared/venv/k2h_native_venv"
-
-    models_with_xllm = [
-        # xml rl 1B
-        "/jais3/checkpoints/jais3_experiments/sft_eval/A13cs_A13x1-1Bcv5c189_sft_reasoningv9.5.2k2horCT_FTPO_es035_RLVRIfI3rabTashkeelMathCode16k_8n_checkpoint_199_to_hf",
-        # xml rl 4B
-        "/jais3/checkpoints/jais3_experiments/sft_eval/A13cs_A13x1-4Bc10248_sft_reasoningv9.5.1k2horCT_FTPO_es035_RLVRIfI3rabTashkeelMathCode16k_8n_checkpoint_199_to_hf",
-        # xml rl 8B
-        "/jais3/checkpoints/jais3_experiments/sft_eval/A13cs_A13x1-8Bc10248_sft_reasoningv9.5.2k2horCT_FTPO_es035_RLVRIfI3rabTashkeelMathCode16k_8n_checkpoint_199_to_hf",
-        # xml ftpo 36B
-        "/jais3/checkpoints/jais3_experiments/sft_eval/A13cs_A13x1-MoVA36B_sft_ifm_20260916_FTPO_es035_hf_FTPO_es035",
-        # json rl 32B
-        "/jais3/checkpoints/jais3_experiments/sft_eval/A13cs_A13x1-32Bc10248_sft_reasoningv9.5.2_FTPO_es035_RLVRIfI3rabTashkeelMathCode16k_checkpoint_199_to_hf",
-        # json rl 8B
-        "/jais3/checkpoints/jais3_experiments/sft/A13/A13cs_A13x1-8Bc10248_sft_reasoningv9.5.2_FTPO_es035_RLVRIfI3rabTashkeelMathCode16k_8n_checkpoint_199_to_hf",
-    ]
-    if any(x.lower() in ckpt.lower() for x in models_with_xllm):
-        venv_path = "/scratch/ad_shared/.US_venv/.vllm-bbq-0518_py3.12_updated"
-    elif any(x in ckpt.lower() for x in ("jais-2", "qwen3.5")):
-        venv_path = "/scratch/ad_shared/.jais2_venv_eval_harness"
-    elif "gemma-4-12b-it" in ckpt.lower():
-        venv_path = "/scratch/ad_shared/.gemma4_12b_venv"
-    elif "falcon-h1-1.5b" in ckpt.lower() or "granite" in ckpt.lower():
-        venv_path = "/scratch/ad_shared/.US_venv/.vllm-bbq-0518_py3.12/" 
-    elif "falcon-h1-3b-instruct" in ckpt.lower() or "falcon-h1-7b-instruct" in ckpt.lower() or "falcon-h1-34b-instruct" in ckpt.lower() or "fanar" in ckpt.lower():
-        venv_path = "/scratch/ad_shared/.gemma4_venv"
-    elif "gemma-4" in ckpt.lower():
-        venv_path = "/scratch/ad_shared/.gemma4_venv"
-    elif "qwen3.8-flash-next" in ckpt.lower():
-        venv_path = "/scratch/ad_shared/.eval-muse-glimmer-30b"
-    elif ("qwen3.6" in ckpt.lower()) or ("qwen3.8" in ckpt.lower()):
-        venv_path = "/scratch/ad_shared/.qwen36"
-    #BBQ Mid-1
-    elif ("bbq" in ckpt.lower() and "mid1" in ckpt.lower()):
-        venv_path = "/scratch/ad_shared/.US_venv/.vllm-patched_xllm-moe_cu128_py3.12"
-    #BBQ Mid-2
-    elif ("bbq" in ckpt.lower() and "mid2" in ckpt.lower()):
-        venv_path = "/scratch/ad_shared/.US_venv/.vllm-bbq-0511_py3.12"
-    #BBQ Mid-3
-    elif ("bbq" in ckpt.lower() and "mid3" in ckpt.lower()):
-        venv_path = "/scratch/ad_shared/.US_venv/.vllm-bbq-0518_py3.12"
-    #Any other BBQ checkpoint (e.g. mid4)
-    elif ("bbq" in ckpt.lower()):
-        venv_path = "/scratch/ad_shared/.US_venv/.vllm-bbq-0518_py3.12"
-    # elif ("100b" in ckpt.lower()):
-    #     venv_path = "/scratch/ahmed.frikha/jais3_a0_eval/venv-vllm"
-    elif ("muse-glimmer" in ckpt.lower()) or ("Mistral-Small-4-119B-2603".lower() in ckpt.lower()):
-        venv_path = "/scratch/ad_shared/.eval-muse-glimmer-30b"
-    
+    venv_path = "/scratch/ad_shared/venv/k2h_native_venv" #! CHANGE BEFORE RELEASE
     logger.debug(f"Checkpoint `{ckpt}` is using virtual environment: `{venv_path}`")
     return venv_path
 
@@ -766,13 +656,9 @@ def get_evaluation_commands(ckpt_type, ckpt, grouped_tasks, args):
     # highlight hyper-parameters used in evaluation
     logger.info("\tOther hyperparameters:")
     logger.info(f"\t\t- Seed: {args.seed}")
-    logger.info(f"\t\t- Batch size: {args.batch_size}")
     logger.info(f"\t\t- Applying chat-template: {apply_chat_template(ckpt_type, ckpt)}")
 
-    ckpt_results_path = get_ckpt_results_path(
-        ckpt_type, ckpt, args.results_path,
-        results_suffix=getattr(args, "results_suffix", ""), #! ANWAR: REDUNDANT FEATURE, REMOVE LATER
-    )
+    ckpt_results_path = get_ckpt_results_path(ckpt_type, ckpt, args.results_path)
 
     commands = []
     for (venv_path, harness, model_args, gen_args), tasks in grouped_tasks:
@@ -783,7 +669,6 @@ def get_evaluation_commands(ckpt_type, ckpt, grouped_tasks, args):
             per_gen_args=gen_args,
             enable_chat_template=apply_chat_template(ckpt_type, ckpt),
             output_path=ckpt_results_path,
-            batch_size=args.batch_size,
             seed=args.seed,
             limit=args.limit,
             lm_eval_verbosity=args.lm_eval_verbosity,
