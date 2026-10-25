@@ -1,3 +1,6 @@
 [submodule "lm-evaluation-harness"]
 	path = lm-evaluation-harness
 	url = https://github.com/ifm-ai/jais3-lm-evaluation-harness.git
+[submodule "mt-evaluation-harness"]
+	path = mt-evaluation-harness
+	url = https://github.com/ifm-ai/mt-evaluation-harness.git
