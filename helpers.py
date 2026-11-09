@@ -13,39 +13,16 @@ from configs import *
 from logger import logger
 
 
-CUDA_RUNTIME_LIBRARY = "/cm/shared/apps/cuda/12.8/lib64/libcudart.so.12"
-def preload_cuda_runtime():
-    """Make CUDA runtime symbols available before a Ray worker imports vLLM."""
-    import ctypes
-    ctypes.CDLL(CUDA_RUNTIME_LIBRARY, mode=ctypes.RTLD_GLOBAL)
-
-
-def set_environment_variables():
+def set_environment_variables(args):
     logger.info("Setting environment variables...")
-    return ' && '.join([
-        'umask 002',
-        # to handle the M4 bandwidth issue (#! DELETE BEFORE RELEASE)
-        "export HF_HUB_OFFLINE=1",
-        # to allow code evaluation in HuggingFace models
-        "export HF_ALLOW_CODE_EVAL=1",
-    ])
-
-
-def expand_checkpoint(checkpoint_str):
-    # check if it's a local checkpoint
-    if Path(checkpoint_str).exists():
-        # check if it's a single checkpoint
-        if (Path(checkpoint_str) / "config.json").is_file():
-            return [checkpoint_str]
-        # parse all checkpoints in the directory
-        checkpoint_paths = [
-            str(p.parent)
-            for p in Path(checkpoint_str).rglob("*/config.json")
+    env_variables = [
+        'umask 002', # to avoid permission issues
+        "export HF_ALLOW_CODE_EVAL=1" # to allow code evaluation in HuggingFace models
         ]
-        return checkpoint_paths
-    else:
-        # it's a HuggingFace checkpoint, return as is
-        return [checkpoint_str]
+    if not args.online_mode:
+        logger.info("Running in offline mode to avoid unecessary updates.")
+        env_variables.append("export HF_HUB_OFFLINE=1")
+    return ' && '.join(env_variables)
 
 
 def resolve_checkpoints(checkpoints, default, msg):
@@ -66,41 +43,24 @@ def get_checkpoints(instruct_checkpoints, think_checkpoints):
     # handle instruct checkpoints
     instruct_checkpoints = resolve_checkpoints(
         instruct_checkpoints,
-        DEFAULT_INSTRUCT_CHECKPOINTS,
+        INSTRUCT_CHECKPOINTS,
         "No instruct checkpoints were provided, loading all default instruct checkpoints."
     )
     # handle think checkpoints
     think_checkpoints = resolve_checkpoints(
         think_checkpoints,
-        DEFAULT_THINK_CHECKPOINTS,
+        THINK_CHECKPOINTS,
         "No thinking checkpoints were provided, loading all default thinking checkpoints."
     )
 
     # groups to help organize the parsing and validation of checkpoints
     groups = [
-        ("instruct", instruct_checkpoints, DEFAULT_INSTRUCT_CHECKPOINTS),
-        ("think", think_checkpoints, DEFAULT_THINK_CHECKPOINTS),
+        ("instruct", instruct_checkpoints, INSTRUCT_CHECKPOINTS),
+        ("think", think_checkpoints, THINK_CHECKPOINTS),
     ]
     # iterate over checkpoints and validate them
     for ckpt_type, input_ckpts, allowed_set in groups:
-        # expand allowed_set checkpoints (if possible)
-        allowed_set = {
-            expanded
-            for ckpt in allowed_set
-            for expanded in expand_checkpoint(ckpt)
-        }
-        # expand user-defined checkpoints (if possible)
-        input_ckpts_expanded = []
         for ckpt in input_ckpts:
-            expanded_ckpts = expand_checkpoint(ckpt)
-            if len(expanded_ckpts) > 1:
-                logger.info(
-                    f"Expanding local checkpoint: {ckpt} into {len(expanded_ckpts)} checkpoints."
-                )
-            for expanded in expanded_ckpts:
-                input_ckpts_expanded.append(expanded)
-        # iterate over expanded checkpoints and check validity
-        for ckpt in input_ckpts_expanded:
             if ckpt not in allowed_set:
                 logger.error(
                     f"Checkpoint '{ckpt}' is not a valid `{ckpt_type}` checkpoint, skipping!"
@@ -111,12 +71,25 @@ def get_checkpoints(instruct_checkpoints, think_checkpoints):
 
 
 def get_ckpt_results_path(ckpt_type, ckpt, results_root_path):
+    logger.debug(
+        f"Resolving results path for `{ckpt_type}` checkpoint `{ckpt}`..."
+    )
     if ckpt_type == "instruct":
-        suffix = "_thinking_low" if ckpt in DEFAULT_THINK_CHECKPOINTS else '_instruct'
+        if ckpt in THINK_CHECKPOINTS:
+            suffix = "_thinking_low"
+            logger.debug(
+                "\tCheckpoint is also a think checkpoint; using suffix `_thinking_low`."
+            )
+        else:
+            suffix = "_instruct"
+            logger.debug("\tInstruct checkpoint; using suffix `_instruct`.")
     elif ckpt_type == "think":
         suffix = "_thinking_high"
+        logger.debug("\tThink checkpoint; using suffix `_thinking_high`.")
     ckpt_out_foldername = ckpt.split("/")[-1] + suffix
-    return results_root_path / ckpt_out_foldername
+    ckpt_results_path = results_root_path / ckpt_out_foldername
+    logger.debug(f"\tResults folder: `{ckpt_results_path}`")
+    return ckpt_results_path
 
 
 def fix_task_naming(task, all_tasks):
@@ -230,75 +203,85 @@ def get_remaining_tasks(
     for task in remaining_tasks:
         logger.info(f"\t\t- {task}")
     return remaining_tasks
-        
-        
-    #     if not override and any(
-    #         re.match(rf"samples_{re.escape(subtask)}_\d+.*\.jsonl$", filepath.name)
-    #         for subtask in subtasks
-    #         for filepath in ckpt_output_samples
-    #     ):
-    #         logger.info(
-    #             f"\tTask `{task}` has been already evaluated, skipping!"
-    #         )
-    #     else:
-    #         remaining_tasks.append(task)
-    # logger.info(f"\tThere are {len(remaining_tasks)} remaining tasks:")
-    # for task in remaining_tasks:
-    #     logger.info(f"\t\t- {task}")
-    # return remaining_tasks
 
 
 def get_model_args(ckpt_type, ckpt, model_length, args):
+    logger.debug(
+        f"Building model args for `{ckpt_type}` checkpoint `{ckpt}`..."
+    )
     model_args = {
         "pretrained": ckpt,
         "dtype": args.dtype,
         "seed" : args.seed,
         "gpu_memory_utilization": args.gpu_mem_utilization,
         "tensor_parallel_size": args.gpu_per_job,
-        #! the following argument was added to handle `bbq-8b-mid-3-final` ckpt
-        "max_model_len": model_length,
+        # "max_model_len": model_length, #! the following argument was added to handle `bbq-8b-mid-3-final` ckpt
         "log_completion_metadata": not args.ignore_completion_metadata,
     }
-    if getattr(args, "num_nodes_per_job", 1) > 1:
-        model_args["distributed_executor_backend"] = "ray"
-    models_require_expert_parallel = [
-        "IFM/Jais-3-375B-A23B-FP8",
-    ]
-    if ckpt in models_require_expert_parallel:
-        model_args["enable_expert_parallel"] = True
-        model_args["enable_flashinfer_autotune"] = False
 
-
-    # set chat_template_args
+    # set model arguments for `instruct` models
     if ckpt_type == "instruct":
+        logger.debug("\tInstruct checkpoint: disabling thinking.")
+        model_args["enable_thinking"] = False
         if "Fanar-2-27B-Instruct".lower() in ckpt.lower():
+            logger.debug("\tFanar instruct checkpoint: setting no_thinking=True.")
             model_args["chat_template_args"] = {
                 "no_thinking": True
             }
-        else:
-            model_args["enable_thinking"] = False
+        elif "minimax-m3" in ckpt.lower():
+            logger.debug("\tMiniMax-M3 instruct checkpoint: disabling thinking_mode.")
+            model_args["chat_template_args"] = {
+                "thinking_mode": "disabled"
+            }
+    
+    # set model arguments for `think` models
     elif ckpt_type == "think":
+        logger.debug("\tThink checkpoint: enabling thinking.")
         model_args["enable_thinking"] = True
         model_args["think_end_token"] = args.thinking_closing_tags
         if "Qwen3.8-27B".lower() in ckpt.lower():
+            logger.debug("\tQwen3.8-27B: setting reasoning_effort=xhigh.")
             model_args["chat_template_args"] = {
                 "reasoning_effort": "xhigh"
             }
         elif "Muse-Glimmer-30B".lower() in ckpt.lower():
+            logger.debug("\tMuse-Glimmer-30B: setting reasoning_strength=xhigh.")
             model_args["chat_template_args"] = {
                 "reasoning_strength": "xhigh"
             }
-    # handle "jais 3" checkpoints
-    if ckpt_type != "base" and ("sft" in ckpt.lower() or "bbq" in ckpt.lower() or "k2-horizon" in ckpt.lower()):
+        elif "minimax-m3" in ckpt.lower():
+            logger.debug("\tMiniMax-M3 think checkpoint: enabling thinking_mode.")
+            model_args["chat_template_args"] = {
+                "thinking_mode": "enabled"
+            }
+        else:
+            logger.debug("\tSetting default think chat template: reasoning_effort=high.")
+            model_args["chat_template_args"] = {
+                "reasoning_effort": "high"
+            }
+    
+    # handle "jais 3" or "k2-horizon" checkpoints
+    if "jais-3" in ckpt.lower() or "k2-horizon" in ckpt.lower():
+        reasoning_effort = "low" if ckpt_type == "instruct" else "high"
+        logger.debug(
+            f"\tJais-3/K2-Horizon checkpoint: overriding reasoning_effort={reasoning_effort}."
+        )
         model_args["enable_thinking"] = True
         model_args["think_end_token"] = args.thinking_closing_tags
         model_args["chat_template_args"] = {
-            "reasoning_effort": "low" if ckpt_type == "instruct" else "high"
+            "reasoning_effort": reasoning_effort
         }
-    if ckpt_type in {"instruct", "think"} and "nemotron" in ckpt.lower():
-        model_args["chat_template_args"] = {
-            "enable_thinking": ckpt_type == "think"
-        }
+    
+    # handle multi-node evaluation
+    if getattr(args, "num_nodes_per_job", 1) > 1:
+        logger.debug(
+            f"\tMulti-node evaluation ({args.num_nodes_per_job} nodes): "
+            "using Ray as the distributed executor."
+        )
+        model_args["distributed_executor_backend"] = "ray"
+
+    # handle special cases
+    if "nemotron" in ckpt.lower():
         # Nemotron-H has eight Mamba groups, so tensor parallelism must divide
         # eight. Use pipeline parallelism for allocations larger than TP8.
         if args.gpu_per_job >= 8 and args.gpu_per_job % 8 == 0:
@@ -306,6 +289,10 @@ def get_model_args(ckpt_type, ckpt, model_length, args):
         elif 8 % args.gpu_per_job == 0:
             nemotron_tp_size = args.gpu_per_job
         else:
+            logger.error(
+                "Nemotron-H requires --gpu-per-job to be a divisor or "
+                f"multiple of its 8 Mamba groups; got {args.gpu_per_job}."
+            )
             raise ValueError(
                 "Nemotron-H requires --gpu-per-job to be a divisor or "
                 "multiple of its 8 Mamba groups"
@@ -314,52 +301,48 @@ def get_model_args(ckpt_type, ckpt, model_length, args):
         nemotron_pp_size = args.gpu_per_job // nemotron_tp_size
         if nemotron_pp_size > 1:
             model_args["pipeline_parallel_size"] = nemotron_pp_size
+            logger.debug(
+                f"\tNemotron-H: tensor_parallel_size={nemotron_tp_size}, "
+                f"pipeline_parallel_size={nemotron_pp_size}."
+            )
+        else:
+            logger.debug(
+                f"\tNemotron-H: tensor_parallel_size={nemotron_tp_size}."
+            )
     if "minimax-m3" in ckpt.lower():
         # MiniMax-M3's sparse-attention backend requires 128-token KV-cache
         # blocks. These evals are text-only, so skip loading its vision tower.
+        logger.debug(
+            "\tMiniMax-M3: setting block_size=128 and language_model_only=True."
+        )
         model_args["block_size"] = 128
         model_args["language_model_only"] = True
 
         if args.gpu_per_job > 8:
             if args.gpu_per_job % 8 != 0:
+                logger.error(
+                    "MiniMax-M3 multi-node needs --gpu-per-job to be a multiple "
+                    f"of 8 (TP=8 per node); got {args.gpu_per_job}."
+                )
                 raise ValueError(
                     "MiniMax-M3 multi-node needs --gpu-per-job to be a multiple "
                     f"of 8 (TP=8 per node); got {args.gpu_per_job}"
                 )
             model_args["tensor_parallel_size"] = 8
             model_args["pipeline_parallel_size"] = args.gpu_per_job // 8
-
-        # MiniMax-M3 controls reasoning through its official chat-template
-        # argument. Keep the generic flag aligned for harness integrations that
-        # also inspect it.
-        if ckpt_type == "instruct":
-            model_args["enable_thinking"] = False
-            model_args["chat_template_args"] = {"thinking_mode": "disabled"}
-        elif ckpt_type == "think":
-            model_args["enable_thinking"] = True
-            model_args["chat_template_args"] = {"thinking_mode": "enabled"}
+            logger.debug(
+                "\tMiniMax-M3 multi-node: tensor_parallel_size=8, "
+                f"pipeline_parallel_size={args.gpu_per_job // 8}."
+            )
     
-    if "mistral-small-4-119b-2603" in ckpt.lower():
-        if args.gpu_per_job > 8:
-            if args.gpu_per_job % 8 != 0:
-                raise ValueError(
-                    "mistral-small-4-119b-2603 multi-node needs --gpu-per-job to be a multiple "
-                    f"of 8 (TP=8 per node); got {args.gpu_per_job}"
-                )
-            model_args["tensor_parallel_size"] = 8
-            model_args["pipeline_parallel_size"] = args.gpu_per_job // 8
-        
-        if ckpt_type == "instruct":
-            model_args["enable_thinking"] = False
-            model_args["chat_template_args"] = {"reasoning_effort": "none"}
-        elif ckpt_type == "think":
-            model_args["enable_thinking"] = True
-            model_args["chat_template_args"] = {"reasoning_effort": "high"}
-
     if "qwen3.5-397b" in ckpt.lower():
+      logger.debug("\tQwen3.5-397B: setting max_num_seqs=128.")
       model_args["max_num_seqs"] = 128
     
     if "falcon-h1-34b-instruct" in ckpt.lower():
+      logger.debug(
+          "\tFalcon-H1-34B: setting max_num_seqs=128 and tensor_parallel_size=2."
+      )
       model_args["max_num_seqs"] = 128
       model_args["tensor_parallel_size"] = 2   # mamba_n_groups=2
       
@@ -374,6 +357,7 @@ def resolve_max_model_length(ckpt, task_requested_model_length, args):
     # an explicit --max-model-length wins; otherwise fall back to the
     # benchmark's requested length (task_requested_model_length).
     # Either is then capped by the model's possible context length (cfg_len).
+    logger.debug(f"Resolving max model length for `{ckpt}`...")
     def _read_config_max_length(ckpt_path, hf_hub_cache_path):
         """Return the max context length from the model's config.json, or None if unavailable."""
         def _find_keys_recursive(node, keys):
@@ -394,6 +378,7 @@ def resolve_max_model_length(ckpt, task_requested_model_length, args):
         config_file = None
         if (ckpt_path / "config.json").is_file():
             config_file = ckpt_path / "config.json"
+            logger.debug(f"\tFound config.json next to the checkpoint: `{config_file}`.")
         elif Path(hf_hub_cache_path).is_dir():
             cache_name = str(ckpt_path).replace("/", "--")
             snap_dir = Path(hf_hub_cache_path) / f"models--{cache_name}" / "snapshots"
@@ -404,28 +389,56 @@ def resolve_max_model_length(ckpt, task_requested_model_length, args):
                     candidate = latest / "config.json"
                     if candidate.is_file():
                         config_file = candidate
+                        logger.debug(
+                            f"\tFound config.json in the HF cache snapshot: `{config_file}`."
+                        )
 
         if config_file is None:
+            logger.debug(
+                "\tNo config.json found; the model's context length is unknown."
+            )
             return None
         try:
             with config_file.open("r", encoding="utf-8") as f:
                 cfg = json.load(f)
-        except (OSError, json.JSONDecodeError):
+        except (OSError, json.JSONDecodeError) as exc:
+            logger.warning(
+                f"\tCould not read `{config_file}` ({exc}); "
+                "the model length will not be capped."
+            )
             return None
 
         keys = ["max_position_embeddings", "max_sequence_length", "n_positions", "seq_length"]
         found = list(_find_keys_recursive(cfg, keys))
         if found:
-            return max(found)
+            cfg_len = max(found)
+            logger.debug(f"\tConfig reports a max context length of {cfg_len}.")
+            return cfg_len
+        logger.debug(
+            f"\tConfig `{config_file}` has no recognized context-length keys."
+        )
         return None
-    requested = args.max_model_length
-    if requested is None:
-        requested = task_requested_model_length
-    cfg_len = _read_config_max_length(Path(ckpt), args.hf_hub_cache_path)
-    if cfg_len is not None:
-        return min(requested, cfg_len)
+    if args.max_model_length is not None:
+        requested = args.max_model_length
+        logger.debug(f"\tUsing explicit --max-model-length: {requested}.")
     else:
+        requested = task_requested_model_length
+        logger.debug(f"\tUsing the task-requested model length: {requested}.")
+    cfg_len = _read_config_max_length(Path(ckpt), args.hf_hub_cache_path)
+    if cfg_len is not None and requested > cfg_len:
+        logger.warning(
+            f"\tRequested model length {requested} exceeds the model's "
+            f"context length {cfg_len}; capping to {cfg_len}."
+        )
+        return cfg_len
+    if cfg_len is not None:
+        logger.debug(
+            f"\tResolved max model length: {requested} "
+            f"(within the model context length {cfg_len})."
+        )
         return requested
+    logger.debug(f"\tResolved max model length: {requested} (uncapped).")
+    return requested
 
 
 def get_model_hyperparams(
@@ -478,7 +491,10 @@ def get_model_hyperparams(
         logger.debug(f"\tNo model was matched!")
     
     # set the temperature to the default value if not already set
-    model_hyperparams["temperature"] = model_hyperparams.get("temperature", TEMPERATURE)
+    model_hyperparams["temperature"] = model_hyperparams.get(
+        "temperature",
+        DEFAULT_TEMPERATURE
+    )
     return model_hyperparams
 
 
@@ -489,13 +505,8 @@ def get_gen_args(ckpt_model_length, model_hyperparams, args):
     gen_args.append(f"temperature={temperature}")
     gen_args.append(f"do_sample={temperature != 0}")
 
-    # --gen-args replaces the profile bundle unless --merge-gen-args is set.
+    # --gen-args replaces the profile bundle
     if getattr(args, "gen_args", None):
-        if getattr(args, "merge_gen_args", False):
-            override_keys = {arg.split("=", 1)[0].strip() for arg in args.gen_args.split(",")}
-            for key, value in model_hyperparams.items():
-                if key not in {"temperature", "do_sample"} | override_keys:
-                    gen_args.append(f"{key}={value}")
         for gen_arg in args.gen_args.split(","):
             gen_arg = gen_arg.strip()
             if gen_arg:
@@ -534,15 +545,6 @@ def get_harness_cmd(harness: str) -> list[str]:
         return ["python", "-m", "lm_eval", "run"]
     elif harness == "mt_eval":
         return ["mt-eval"]
-    elif harness == "minihelmet_eval":
-        return [
-            "python", str(MINIHELMET_WRAPPER),
-        ]
-    elif harness == "humanpref":
-        return [
-            str(Path(HUMANPREF_VENV) / "bin" / "python"),
-            str(HUMANPREF_WRAPPER),
-        ]
     else:
         raise ValueError(f"Invalid harness: {harness}")
 
@@ -602,11 +604,9 @@ def create_eval_cmd(
         "--verbosity", kwargs["lm_eval_verbosity"],
         "--trust_remote_code",
         "--device", "cuda:0"
+        "--confirm_run_unsafe_code",  # necessary for code tasks (e.g. humaneval)
+        "--apply_chat_template",
     ])
-    if harness != "humanpref":
-        cmd.append("--confirm_run_unsafe_code")  # necessary for code tasks (e.g. humaneval)
-    if enable_chat_template:
-        cmd.append("--apply_chat_template")
     if kwargs.get("limit") is not None:
         cmd.extend(["--limit", str(kwargs["limit"])])
     if kwargs.get("system_instruction") is not None:
@@ -656,9 +656,10 @@ def get_evaluation_commands(ckpt_type, ckpt, grouped_tasks, args):
     # highlight hyper-parameters used in evaluation
     logger.info("\tOther hyperparameters:")
     logger.info(f"\t\t- Seed: {args.seed}")
-    logger.info(f"\t\t- Applying chat-template: {apply_chat_template(ckpt_type, ckpt)}")
+    logger.info(f"\t\t- Applying chat-template")
 
     ckpt_results_path = get_ckpt_results_path(ckpt_type, ckpt, args.results_path)
+    logger.info(f"\t\t- Results will be saved to: {ckpt_results_path}")
 
     commands = []
     for (venv_path, harness, model_args, gen_args), tasks in grouped_tasks:
@@ -687,14 +688,7 @@ def get_evaluation_commands(ckpt_type, ckpt, grouped_tasks, args):
                 run_harness = 'runpy.run_module("mt_eval", run_name="__main__", alter_sys=True)'
                 harness_args = harness_eval_cmd[1:]  # Remove only "mt-eval".
             else:
-                # minihelmet/humanpref use: python /path/to/wrapper.py ...
-                python_executable = harness_eval_cmd[0]
-                script_path = harness_eval_cmd[1]
-                run_harness = (
-                    f"sys.path.insert(0, {str(Path(script_path).resolve().parent)!r}); "
-                    f"runpy.run_path({script_path!r}, run_name='__main__')"
-                )
-                harness_args = harness_eval_cmd[2:]
+                raise ValueError(f"Invalid harness: {harness}")
             # Initialize the Ray job with CUDA's library path before vLLM creates actors.
             ray_driver_cmd = [
                 python_executable,

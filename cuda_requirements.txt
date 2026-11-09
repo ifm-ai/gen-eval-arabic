@@ -1,0 +1,75 @@
+# GPU packages. Install them with:
+#
+#   python install_cuda.py
+#
+# The script reads "CUDA Version" from nvidia-smi and adjusts this file.
+# A driver that reports 13.0 installs every "toolkit" package as >13.0,<13.2
+# and installs PyTorch from https://download.pytorch.org/whl/cu130.
+# nvidia-cuda-nvdisasm is the exception: CUTLASS 4.6.2 needs >=13.3,<14.
+#
+# Comments after a package name are read by install_cuda.py:
+#   toolkit    version follows the driver CUDA version
+#   torch      PyTorch wheel; the +cu130 tag follows the driver
+#   cu-major   package name uses cu13 on CUDA 13 and cu12 on CUDA 12
+#   cu12-only  installed only when the driver reports CUDA 12
+#   cu13-only  installed only when the driver reports CUDA 13
+
+# CUDA toolkit. These versions track the driver.
+cuda-bindings==13.3.1  # toolkit
+cuda-python==13.3.1  # toolkit
+cuda-toolkit==13.0.3.0  # toolkit
+nvidia-cuda-cccl==13.3.4.1.2rc1  # toolkit
+nvidia-cuda-crt==13.4.46rc1  # toolkit
+nvidia-cuda-cupti==13.0.85  # toolkit
+nvidia-cuda-nvcc==13.4.46rc1  # toolkit
+nvidia-cuda-nvdisasm==13.4.46rc1  # kept at >=13.3,<14 by install_cuda.py
+nvidia-cuda-nvrtc==13.0.88  # toolkit
+nvidia-cuda-runtime==13.0.96  # toolkit
+nvidia-nvjitlink==13.4.46rc1  # toolkit
+nvidia-nvtx==13.0.85  # toolkit
+nvidia-nvvm==13.4.46rc1  # toolkit
+
+# PyTorch. install_cuda.py selects +cu130, +cu128, and so on.
+torch==2.13.0+cu130  # torch
+torchaudio==2.11.0+cu130  # torch
+torchcodec==0.16.0+cu130  # torch
+torchvision==0.28.0+cu130  # torch
+
+# Libraries whose name says which CUDA major they were built for.
+nvidia-cudnn-cu13==9.20.0.48  # cu-major
+nvidia-cusparselt-cu13==0.8.1  # cu-major
+nvidia-nccl-cu13==2.29.7  # cu-major
+nvidia-nvshmem-cu13==3.4.5  # cu-major
+nvidia-cutlass-dsl-libs-cu12==4.6.2  # cu12-only
+nvidia-cutlass-dsl-libs-cu13==4.6.2  # cu13-only
+
+# Other GPU packages. These stay pinned.
+compressed-tensors==0.17.0
+cuda-core==1.0.1
+cuda-pathfinder==1.8.1
+cuda-tile==1.6.0rc10
+flashinfer-python==0.6.18
+humming-kernels==0.1.12
+instanttensor==0.1.9
+nccl4py==0.5.0
+nvidia-cublas==13.1.1.3
+nvidia-cudnn-frontend==1.28.0
+nvidia-cufft==12.0.0.61
+nvidia-cufile==1.15.1.6
+nvidia-curand==10.4.0.35
+nvidia-cusolver==12.0.4.66
+nvidia-cusparse==12.6.3.3
+nvidia-cutlass-dsl==4.6.2
+nvidia-cutlass-dsl-libs-base==4.6.2
+nvidia-cutlass-dsl-libs-core==4.6.2
+nvidia-ml-py==13.610.43
+nvtx==0.2.15
+pynvvideocodec==2.0.4
+quack-kernels==0.6.4
+tilelang==0.1.12
+tokenspeed-mla==0.1.8
+tokenspeed-triton==3.8.10.post20260906
+torch-c-dlpack-ext==0.1.5
+triton==3.7.1
+xgrammar==0.2.6
+

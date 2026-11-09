@@ -11,6 +11,7 @@ ROOT_DIR = Path(__file__).resolve().parent
 SEED = 42
 DTYPE="bfloat16"
 GPU_MEM_UTIL = 0.90
+DEFAULT_TEMPERATURE = 0.0
 DEFAULT_MAX_MODEL_LEN = 1_048_576 #NOTE: set to the maximm
 # ATTENTION_BACKEND = "TRITON_ATTN"
 LM_EVAL_VERBOSITY = "DEBUG"
@@ -183,21 +184,22 @@ TASK_TO_SCORER = {} #? SHOULD BE REMOVED
 # ═════════════════════════════════════════════════════════════════════════════
 JAIS_CHECKPOINTS = {
     # Quantized checkpoints
-    "IFM/Jais-3-7B-FP8",
     "IFM/Jais-3-3.7B-FP8",
+    "IFM/Jais-3-7B-FP8",
     "IFM/Jais-3-32B-FP8",
     "IFM/Jais-3-MoVA-36B-A4B-FP8",
     "IFM/Jais-3-375B-A23B-FP8",
 
     # Main checkpoints
-    "IFM/Jais-3-7B-FP8",
-    "IFM/Jais-3-3.7B-FP8",
-    "IFM/Jais-3-32B-FP8",
-    "IFM/Jais-3-MoVA-36B-A4B-FP8",
-    "IFM/Jais-3-375B-A23B-FP8",
+    "inception42/Jais-3-0.9B",
+    "inception42/Jais-3-3.7B",
+    "inception42/Jais-3-7B",
+    "inception42/Jais-3-32B",
+    "inception42/Jais-3-MoVA-36B-A4B",
+    "inception42/Jais-3-375B-A23B",
 }
 
-DEFAULT_INSTRUCT_CHECKPOINTS={
+INSTRUCT_CHECKPOINTS={
     # 1B models
     "CohereLabs/tiny-aya-global",
     "meta-llama/Llama-3.2-1B-Instruct",
@@ -232,7 +234,7 @@ DEFAULT_INSTRUCT_CHECKPOINTS={
     "Applied-Innovation-Center/Karnak-40B-v1.0",
 }
 
-DEFAULT_THINK_CHECKPOINTS = {
+THINK_CHECKPOINTS = {
     # 1B models
     "Qwen/Qwen3.5-2B"
     
@@ -262,20 +264,20 @@ DEFAULT_THINK_CHECKPOINTS = {
 }
 
 # All JAIS checkpoints are THINK models
-DEFAULT_THINK_CHECKPOINTS = (
-    DEFAULT_THINK_CHECKPOINTS |
+THINK_CHECKPOINTS = (
+    THINK_CHECKPOINTS |
     JAIS_CHECKPOINTS
 )
 
 # All THINK models are INSTRUCT models
-DEFAULT_INSTRUCT_CHECKPOINTS = (
-    DEFAULT_INSTRUCT_CHECKPOINTS |
-    DEFAULT_THINK_CHECKPOINTS
+INSTRUCT_CHECKPOINTS = (
+    INSTRUCT_CHECKPOINTS |
+    THINK_CHECKPOINTS
 )
 
 CHECKPOINTS= (
-    DEFAULT_INSTRUCT_CHECKPOINTS |
-    DEFAULT_THINK_CHECKPOINTS
+    INSTRUCT_CHECKPOINTS |
+    THINK_CHECKPOINTS
 )
 
 # ═════════════════════════════════════════════════════════════════════════════

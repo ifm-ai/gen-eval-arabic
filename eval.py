@@ -46,7 +46,7 @@ def main(args):
     logger.debug('\n'.join([f"\t - {ckpt}" for ckpt in checkpoints]))
 
     # get command to export environment variables
-    export_env_variable_cmd = set_environment_variables()
+    export_env_variable_cmd = set_environment_variables(args)
 
     sbatch_jobs = [] # used only when --sbatch is passed
     for ckpt_type, ckpt in checkpoints:
@@ -239,9 +239,23 @@ if __name__ == "__main__":
         help="Random seed for evaluation (default: 42)"
     )
     parser.add_argument(
+        "--online-mode", action="store_true",
+        help="Run the evaluation in online mode to update the model weights (default: False)"
+    )
+    parser.add_argument(
         "--lm-eval-verbosity", type=str, default=LM_EVAL_VERBOSITY,
         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
         help="Verbosity level for lm-eval (default: DEBUG)"
+    )
+    parser.add_argument(
+        "--profile", type=str, default=DEFAULT_PROFILE,
+        choices=["optimized", "deterministic"],
+        help=(
+            "Hyperparameter profile. 'optimized' (default) resolves per-task "
+            "tuned hyperparameters from configs.py; 'deterministic' runs "
+            "greedy/deterministic. Explicitly-passed --temperature/--gen-args "
+            "always override the profile."
+        )
     )
     parser.add_argument(
         "--max-model-length", type=int,
@@ -254,9 +268,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--temperature", type=float, default=None,
         help=(
-            "Generation temperature. If omitted, it is resolved from --profile "
-            f"(deterministic falls back to {TEMPERATURE} -> greedy). If passed, "
-            "it overrides the profile value."
+            "Generation temperature. If omitted, it is resolved from --profile."
+            " If passed, it overrides the profile value."
         )
     )
     parser.add_argument(
@@ -333,16 +346,6 @@ if __name__ == "__main__":
         help=f"A prefix for the job name (default: {DEFAULT_PROFILE})"
     )
 
-    parser.add_argument(
-        "--profile", type=str, default=DEFAULT_PROFILE,
-        choices=["optimized", "deterministic"],
-        help=(
-            "Hyperparameter profile. 'optimized' (default) resolves per-task "
-            "tuned hyperparameters from configs.py; 'deterministic' runs "
-            "greedy/deterministic. Explicitly-passed --temperature/--gen-args "
-            "always override the profile."
-        )
-    )
 
     args = parser.parse_args()
     # no mode flag at all -> run all modes (each [] resolves to its defaults)

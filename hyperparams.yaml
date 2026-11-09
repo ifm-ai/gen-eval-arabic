@@ -199,51 +199,8 @@ configurations:
         defaults:
           temperature: 0.1 # Official Falcon-H1 family inference guidance.
       
-      ###################### Jais 3 SFT checkpoints ######################
-      /jais3/checkpoints/jais3_experiments/sft*:
-        defaults:
-          temperature: 0.2
-          top_p: 0.95
-          top_k: 20
-          min_p: 0.0
-          presence_penalty: 0.0
-          repetition_penalty: 1.0
-        rules:
-          - when:
-              mode: think
-              language: english
-            set:
-              temperature: 1.0
-
-          - when:
-              mode: think
-              language: arabic
-            set:
-              temperature: 0.7
-      
-      /jais3/checkpoints/jais3_experiments/release_checkpoints/1b/cpt*:
-        defaults:
-          temperature: 0.2
-          top_p: 0.95
-          top_k: 20
-          min_p: 0.0
-          presence_penalty: 0.0
-          repetition_penalty: 1.0
-        rules:
-          - when:
-              mode: think
-              language: english
-            set:
-              temperature: 1.0
-
-          - when:
-              mode: think
-              language: arabic
-            set:
-              temperature: 0.7
-
-
-      /jais3/checkpoints/jais3_experiments/release_checkpoints/1b_xml/sft/hf_checkpoints/artifacts/*:
+      ###################### Jais 3 ######################
+      "*/Jais-3*":
         defaults:
           temperature: 0.2
           top_p: 0.95
@@ -264,12 +221,6 @@ configurations:
             set:
               temperature: 0.7
               
-      ###################### BBQ ######################
-      /jais3/checkpoints/bbq*:
-        defaults:
-          temperature: 1.0
-          top_p: 0.95
-
       ###################### Karnak ######################
       Applied-Innovation-Center/Karnak-*:
         defaults:
@@ -315,11 +266,6 @@ configurations:
         defaults:
           temperature: 0.6
           top_p: 0.95
-      
-      /jais3/checkpoints/K2-Horizon-0.9B-*:
-          defaults:
-            temperature: 0.6
-            top_p: 0.95
       
       IFM/K2-Horizon-3.7B:
         defaults:

@@ -16,10 +16,10 @@ these steps:
   $ source ./jais3_venv/bin/activate
   ```
 
-2. Install the Python requirements
+2. Install the Python requirements (without dependencies)
   ```bash
   $ pip install uv --upgrade
-  $ uv pip install -r requirements.txt
+  $ uv pip install -r requirements.txt --no-deps
   ```
 
 3. Login to a HPC server (where `nvidia-smi` is available) and install the CUDA requirements by running `python install_cuda_requirements.py`.
