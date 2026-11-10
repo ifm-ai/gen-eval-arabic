@@ -553,8 +553,6 @@ def group_tasks_by_hyperparameters(tasks, ckpt_type, ckpt, profile_hyperparams, 
     logger.debug(f"Grouping remaining tasks by hyperparameters...")
     grouped_tasks = defaultdict(list)
     for task in tasks:
-        # get venv path
-        venv_path = get_venv(task, ckpt)
         # get task metadata
         harness, domain, language, task_requested_model_length = get_task_metadata(task)
         # get model hyperparameters from profile
@@ -571,7 +569,7 @@ def group_tasks_by_hyperparameters(tasks, ckpt_type, ckpt, profile_hyperparams, 
         # get generation arguments (per-task)
         ckpt_gen_args = get_gen_args(ckpt_model_length, model_hyperparams, args)
         # group tasks by their harness, model arguments, and generation arguments
-        grouped_tasks[(venv_path, harness, ckpt_model_args, ckpt_gen_args)].append(task)
+        grouped_tasks[(harness, ckpt_model_args, ckpt_gen_args)].append(task)
     logger.info(f"\tGrouped remaining tasks into: {len(grouped_tasks)} groups:")
     logger.info(f"{'\n'.join([f'\t\t- {tasks}' for tasks in grouped_tasks.values()])}")
     return grouped_tasks.items()
@@ -612,13 +610,6 @@ def create_eval_cmd(
     if kwargs.get("system_instruction") is not None:
         cmd.extend(["--system_instruction", str(kwargs["system_instruction"])])
     return cmd
-
-
-def get_venv(task, ckpt):
-    """virtual environment might change based on the task and/or checkpoint"""
-    venv_path = "/scratch/ad_shared/venv/k2h_native_venv" #! CHANGE BEFORE RELEASE
-    logger.debug(f"Checkpoint `{ckpt}` is using virtual environment: `{venv_path}`")
-    return venv_path
 
 
 def create_lm_eval_sbatch_cmd(
@@ -662,7 +653,7 @@ def get_evaluation_commands(ckpt_type, ckpt, grouped_tasks, args):
     logger.info(f"\t\t- Results will be saved to: {ckpt_results_path}")
 
     commands = []
-    for (venv_path, harness, model_args, gen_args), tasks in grouped_tasks:
+    for (harness, model_args, gen_args), tasks in grouped_tasks:
         harness_eval_cmd = create_eval_cmd(
             tasks=tasks,
             harness=harness,
@@ -728,8 +719,6 @@ def get_evaluation_commands(ckpt_type, ckpt, grouped_tasks, args):
             harness_cmd = shlex.join(harness_eval_cmd)
         # use run harness_cmd whether with ray or without (single node inference)
         eval_cmd = ' && '.join([
-            # activate virtual environment
-            f"source {shlex.quote(f'{venv_path}/bin/activate')}",
             # run evaluation command
             harness_cmd,
             # run scorer commands (if needed)

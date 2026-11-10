@@ -1,13 +1,15 @@
 # GPU packages. Install them with:
 #
-#   python install_cuda.py
+#   python install_cuda_requirements.py
 #
-# The script reads "CUDA Version" from nvidia-smi and adjusts this file.
-# A driver that reports 13.0 installs every "toolkit" package as >13.0,<13.2
-# and installs PyTorch from https://download.pytorch.org/whl/cu130.
+# The script reads "CUDA Version" from nvidia-smi and installs the newest
+# PyTorch wheel at or below that driver. torch==2.13.0 is published for
+# CUDA 12.6, 12.9, 13.0, and 13.2, so a 13.1 driver installs cu130.
+# Toolkit packages follow the wheel: cu130 installs them as >13.0,<13.2,
+# because torch==2.13.0+cu130 requires cuda-toolkit==13.0.3.
 # nvidia-cuda-nvdisasm is the exception: CUTLASS 4.6.2 needs >=13.3,<14.
 #
-# Comments after a package name are read by install_cuda.py:
+# Comments after a package name are read by install_cuda_requirements.py:
 #   toolkit    version follows the driver CUDA version
 #   torch      PyTorch wheel; the +cu130 tag follows the driver
 #   cu-major   package name uses cu13 on CUDA 13 and cu12 on CUDA 12
@@ -22,14 +24,14 @@ nvidia-cuda-cccl==13.3.4.1.2rc1  # toolkit
 nvidia-cuda-crt==13.4.46rc1  # toolkit
 nvidia-cuda-cupti==13.0.85  # toolkit
 nvidia-cuda-nvcc==13.4.46rc1  # toolkit
-nvidia-cuda-nvdisasm==13.4.46rc1  # kept at >=13.3,<14 by install_cuda.py
+nvidia-cuda-nvdisasm==13.4.46rc1  # kept at >=13.3,<14 by install_cuda_requirements.py
 nvidia-cuda-nvrtc==13.0.88  # toolkit
 nvidia-cuda-runtime==13.0.96  # toolkit
 nvidia-nvjitlink==13.4.46rc1  # toolkit
 nvidia-nvtx==13.0.85  # toolkit
 nvidia-nvvm==13.4.46rc1  # toolkit
 
-# PyTorch. install_cuda.py selects +cu130, +cu128, and so on.
+# PyTorch. install_cuda_requirements.py selects +cu130, +cu129, and so on.
 torch==2.13.0+cu130  # torch
 torchaudio==2.11.0+cu130  # torch
 torchcodec==0.16.0+cu130  # torch
@@ -72,4 +74,3 @@ tokenspeed-triton==3.8.10.post20260906
 torch-c-dlpack-ext==0.1.5
 triton==3.7.1
 xgrammar==0.2.6
-

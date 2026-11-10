@@ -67,7 +67,7 @@ def main(args):
         if not remaining_tasks:
             logger.info(f"All tasks already evaluated for this checkpoint! Skipping...\n\n")
             continue
-        # group tasks by their common hyperparameters (venv, harness, model args, gen args)
+        # group tasks by their common hyperparameters (harness, model args, gen args)
         grouped_remaining_tasks = group_tasks_by_hyperparameters(
             tasks=remaining_tasks,
             ckpt_type=ckpt_type,
@@ -83,7 +83,7 @@ def main(args):
                 ckpt_type,
                 ckpt,
                 grouped_remaining_tasks,
-                args
+                args,
             )
             # evaluate commands sequentially
             for eval_command in eval_commands:
@@ -124,7 +124,7 @@ def main(args):
                 ckpt_type,
                 ckpt,
                 grouped_remaining_tasks,
-                args
+                args,
             )
             for eval_command, task_group in zip(eval_commands, task_groups):
                 curr_log_filepath = log_directory / f"%j__{task_group}.log"
